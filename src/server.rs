@@ -139,7 +139,7 @@ async fn broker_loop(mut events: Receiver<Event>) {
             Event::Message { from, to, msg } => {
                 for addr in to {
                     if let Some(peer) = peers.get_mut(&addr) {
-                        let msg = format!("from {}: {}\n", from, msg);
+                        let msg = format!("< from {}: {}\n", from, msg);
                         peer.send(msg).await.unwrap();
                     }
                 }
