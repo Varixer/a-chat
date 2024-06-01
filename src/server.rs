@@ -1,7 +1,5 @@
 use async_std::{
-    prelude::*,
-    task,
-    net::{TcpListener, ToSocketAddrs},
+    io::BufReader, net::{TcpListener, TcpStream, ToSocketAddrs}, prelude::*, task
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -11,9 +9,48 @@ async fn accept_loop(addr: impl ToSocketAddrs) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     let mut incomming = listener.incoming();
     while let Some(stream) = incomming.next().await {
-        // TODO
+        // 我们使用 task::spawn function 来生成一个独立的任务，用于与每个客户端一起工作。
+        // 也就是说，在接受客户端后， accept_loop 立即开始等待下一个客户端。
+        // 这是事件驱动架构的核心优势：我们同时为许多客户提供服务，而无需花费很多硬件线程。
+        let stream = stream?;
+        println!("Accepting from : {}", stream.peer_addr()?);
+        let handle = task::spawn(connection_loop(stream));
+        handle.await?
     }
     Ok(())
+}
+
+async fn connection_loop(stream: TcpStream) -> Result<()> {
+    let reader = BufReader::new(&stream);
+    let mut lines = reader.lines();
+
+    let name = match lines.next().await {
+        None => Err("peer disconnected immediately")?,
+        Some(line) => line?,
+    };
+    println!("name = {}", name);
+
+    while let Some(line) = lines.next().await {
+        let line  = line?;
+        let (dest, msg) = match line.find(":") {
+            None => continue,
+            Some(idx) => (&line[..idx], line[idx + 1 ..].trim()),
+        };
+        let dest: Vec<String> = dest.split(',').map(|name| name.trim().to_string()).collect();
+        let msg: String = msg.to_string();
+    }
+    Ok(())
+}
+
+fn spawn_and_log_error<F>(fut: F) -> task::JoinHandle<()>
+where
+    F: Future<Output = Result<()>> + Send +'static,
+{
+    task::spawn(async move {
+        if let Err(e) = fut.await {
+            eprintln!("error: {}", e);
+        }
+    })
 }
 
 fn run() -> Result<()> {
